@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>AI Image Editor with Crop, Rotate & Background</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      text-align: center;
+      padding: 20px;
+      color: #fff;
+      margin: 0;
+      height: 100vh;
+      /* Background image */
+      background: url('https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1350&q=80') no-repeat center center fixed;
+      background-size: cover;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+    }
+    header {
+      background: rgba(0, 0, 0, 0.6);
+      width: 100%;
+      padding: 20px 0;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.7);
+      margin-bottom: 20px;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 48px;
+      font-weight: 700;
+      text-shadow: 2px 2px 8px #000;
+    }
+    #image {
+      max-width: 80%;
+      margin-top: 20px;
+      border-radius: 16px;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.8);
+      user-select: none;
+      cursor: crosshair;
+      position: relative;
+      background: #fff;
+    }
+    .controls {
+      margin-top: 30px;
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .controls button {
+      padding: 12px 24px;
+      font-size: 16px;
+      border: none;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #4CAF50, #388E3C);
+      color: white;
+      cursor: pointer;
+      transition: transform 0.2s, background 0.3s;
+      box-shadow: 0 3px 7px rgba(0,0,0,0.3);
+    }
+    .controls button:hover {
+      background: linear-gradient(135deg, #66BB6A, #2E7D32);
+      transform: scale(1.05);
+    }
+    input[type="file"] {
+      margin-top: 20px;
+      padding: 10px;
+      border: 2px dashed #4CAF50;
+      border-radius: 12px;
+      background-color: #e8f5e9;
+      cursor: pointer;
+    }
+    #canvas {
+      display: none;
+    }
+    #crop-area {
+      position: absolute;
+      border: 2px dashed #4CAF50;
+      background: rgba(76, 175, 80, 0.3);
+      display: none;
+      pointer-events: none;
+    }
+    #image-container {
+      position: relative;
+      display: inline-block;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Welcome to AI Image Editor</h1>
+  </header>
+
+  <input type="file" accept="image/*" id="upload" />
+  <div id="image-container">
+    <img id="image" src="" alt="Your Image Will Appear Here" />
+    <div id="crop-area"></div>
+  </div>
+
+  <div class="controls">
+    <button onclick="applyFilter('grayscale(100%)')">Grayscale</button>
+    <button onclick="applyFilter('blur(5px)')">Blur</button>
+    <button onclick="applyFilter('brightness(150%)')">Brightness</button>
+    <button onclick="applyFilter('contrast(200%)')">Contrast</button>
+    <button onclick="applyFilter('none')">Reset</button>
+    <button onclick="rotateImage()">Rotate 90°</button>
+    <button onclick="startCrop()">Crop</button>
+    <button onclick="downloadImage()">Download</button>
+  </div>
+
+  <canvas id="canvas"></canvas>
+
+  <script>
+    const upload = document.getElementById('upload');
+    const image = document.getElementById('image');
+    const canvas = document.getElementById('canvas');
+    const cropArea = document.getElementById('crop-area');
+    const imageContainer = document.getElementById('image-container');
+
+    let currentFilter = 'none';
+    let rotation = 0; // in degrees
+    let cropping = false;
+    let cropStartX, cropStartY, cropEndX, cropEndY;
+
+    upload.addEventListener('change', () => {
+      const file = upload.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          image.src = reader.result;
+          rotation = 0;
+          image.style.transform = '';
+          image.style.filter = 'none';
+          currentFilter = 'none';
+          cropArea.style.display = 'none';
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+
+    function applyFilter(filter) {
+      currentFilter = filter;
+      image.style.filter = filter;
+    }
+
+    function rotateImage() {
+      rotation = (rotation + 90) % 360;
+      image.style.transform = `rotate(${rotation}deg)`;
+    }
+
+    function startCrop() {
+      cropping = true;
+      cropArea.style.display = 'none';
+      cropArea.style.width = '0px';
+      cropArea.style.height = '0px';
+      image.style.cursor = 'crosshair';
+    }
+
+    imageContainer.addEventListener('mousedown', e => {
+      if (!cropping) return;
+      const rect = image.getBoundingClientRect();
+      cropStartX = e.clientX - rect.left;
+      cropStartY = e.clientY - rect.top;
+
+      cropArea.style.left = cropStartX + 'px';
+      cropArea.style.top = cropStartY + 'px';
+      cropArea.style.width = '0px';
+      cropArea.style.height = '0px';
+      cropArea.style.display = 'block';
+
+      function onMouseMove(e) {
+        cropEndX = e.clientX - rect.left;
+        cropEndY = e.clientY - rect.top;
+        const width = cropEndX - cropStartX;
+        const height = cropEndY - cropStartY;
+        cropArea.style.width = Math.abs(width) + 'px';
+        cropArea.style.height = Math.abs(height) + 'px';
+        cropArea.style.left = (width < 0 ? cropEndX : cropStartX) + 'px';
+        cropArea.style.top = (height < 0 ? cropEndY : cropStartY) + 'px';
+      }
+
+      function onMouseUp() {
+        imageContainer.removeEventListener('mousemove', onMouseMove);
+        imageContainer.removeEventListener('mouseup', onMouseUp);
+        cropping = false;
+        cropImage();
+        cropArea.style.display = 'none';
+        image.style.cursor = 'default';
+      }
+
+      imageContainer.addEventListener('mousemove', onMouseMove);
+      imageContainer.addEventListener('mouseup', onMouseUp);
+    });
+
+    function cropImage() {
+      if (!cropStartX || !cropStartY || !cropEndX || !cropEndY) return;
+
+      const imgNaturalWidth = image.naturalWidth;
+      const imgNaturalHeight = image.naturalHeight;
+      const imgDisplayWidth = image.width;
+      const imgDisplayHeight = image.height;
+
+      const rectX = Math.min(cropStartX, cropEndX) / imgDisplayWidth * imgNaturalWidth;
+      const rectY = Math.min(cropStartY, cropEndY) / imgDisplayHeight * imgNaturalHeight;
+      const rectWidth = Math.abs(cropEndX - cropStartX) / imgDisplayWidth * imgNaturalWidth;
+      const rectHeight = Math.abs(cropEndY - cropStartY) / imgDisplayHeight * imgNaturalHeight;
+
+      canvas.width = rectWidth;
+      canvas.height = rectHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.filter = currentFilter;
+      ctx.clearRect(0, 0, rectWidth, rectHeight);
+
+      ctx.save();
+
+      if (rotation !== 0) {
+        ctx.translate(rectWidth / 2, rectHeight / 2);
+        ctx.rotate((rotation * Math.PI) / 180);
+        ctx.translate(-rectWidth / 2, -rectHeight / 2);
+      }
+
+      ctx.drawImage(
+        image,
+        rectX,
+        rectY,
+        rectWidth,
+        rectHeight,
+        0,
+        0,
+        rectWidth,
+        rectHeight
+      );
+      ctx.restore();
+
+      image.src = canvas.toDataURL();
+      image.style.transform = '';
+      rotation = 0;
+    }
+
+    function downloadImage() {
+      const ctx = canvas.getContext('2d');
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      ctx.filter = currentFilter;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      ctx.save();
+      if (rotation !== 0) {
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        ctx.rotate((rotation * Math.PI) / 180);
+        ctx.translate(-canvas.width / 2, -canvas.height / 2);
+      }
+
+      ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+      ctx.restore();
+
+      const link = document.createElement('a');
+      link.download = 'edited-image.png';
+      link.href = canvas.toDataURL();
+      link.click();
+    }
+  </script>
+</body>
+</html>
